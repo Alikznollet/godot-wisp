@@ -122,7 +122,7 @@ func deleteAddonFolder(folderName string) error {
 
 // Fetches outdated addons from the addons.json file.
 func FetchOutdatedAddons(m *AddonManifest) ([]OutdatedAddon, error) {
-	var outdated []OutdatedAddon
+	var outdated []OutdatedAddon = make([]OutdatedAddon, 0)
 
 	util.Info("Checking for updates...")
 
