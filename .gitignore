@@ -17,7 +17,3 @@ mono_crash.*.json
 
 # Executables.
 *.exe
-
-# Temporarily ignore addon files for testing purposes
-addons
-addons.json

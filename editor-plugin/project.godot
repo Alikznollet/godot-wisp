@@ -14,6 +14,14 @@ config/name="Addon Updater Plugin"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
+[autoload]
+
+PhantomCameraManager="*uid://duq6jhf6unyis"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/wisp_updater/plugin.cfg")
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
@@ -21,7 +29,3 @@ config/icon="res://icon.svg"
 [rendering]
 
 rendering_device/driver.windows="d3d12"
-
-[editor_plugins]
-
-enabled=PackedStringArray("res://addons/phantom_camera/plugin.cfg", "res://addons/steam_lobby/plugin.cfg")
