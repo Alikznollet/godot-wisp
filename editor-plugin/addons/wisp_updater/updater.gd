@@ -48,6 +48,8 @@ func _on_wisp_button_pressed() -> void:
 
 	var output = []
 
+	# TODO: Make this run multi-threaded.
+
 	# Check for updates.
 	var exit_code: int = OS.execute("wisp", ["check", "--json"], output, true, true)
 
@@ -64,10 +66,8 @@ func _on_wisp_button_pressed() -> void:
 		printerr("Failed to parse Wisp JSON. Check the terminal output.")
 		return
 
+	# Will always return at least an empty list.
 	var outdated_addons = json.data
-	if not outdated_addons:
-		printerr("Wisp is currently not tracking any addons in this project.")
-		return
 
 	# Build UI based on JSON.
 	if outdated_addons.is_empty():
