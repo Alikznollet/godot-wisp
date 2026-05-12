@@ -2,17 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://qgs7d6jrj6pa"
-path="res://.godot/imported/Failed.svg-3b1501d0f2f5650c452e3184767b7f06.ctex"
+uid="uid://gvon8mvqv1db"
+path="res://.godot/imported/Icon.svg-5d56bbc089f6b32150fcefade9cfb7ff.ctex"
 metadata={
-"has_editor_variant": true,
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://addons/wisp_updater/icons/Failed.svg"
-dest_files=["res://.godot/imported/Failed.svg-3b1501d0f2f5650c452e3184767b7f06.ctex"]
+source_file="res://addons/wisp_updater/icons/Icon.svg"
+dest_files=["res://.godot/imported/Icon.svg-5d56bbc089f6b32150fcefade9cfb7ff.ctex"]
 
 [params]
 
@@ -40,5 +39,5 @@ process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
 svg/scale=4.0
-editor/scale_with_editor_scale=true
+editor/scale_with_editor_scale=false
 editor/convert_colors_with_editor_theme=false

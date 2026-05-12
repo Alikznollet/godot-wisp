@@ -9,6 +9,8 @@ var in_progress_icon: Texture2D = load("uid://7tfmm0phd0n3")
 var failed_icon: Texture2D = load("uid://qgs7d6jrj6pa")
 
 var update_button: Button
+var button_tween: Tween
+
 var dialog: ConfirmationDialog # TODO: This is temp, should be scene.
 var vbox: VBoxContainer # TODO: This is temp, should be cleaned up.
 
@@ -26,6 +28,10 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
 	update_button.queue_free()
 	dialog.queue_free()
+
+	# Make sure to clean up the thread.
+	if wisp_thread and wisp_thread.is_started():
+		wisp_thread.wait_to_finish()
 
 
 ## Initializes the button for Wisp
@@ -73,6 +79,7 @@ func _init_button() -> void:
 	# Inject the button.
 	native_button.get_parent().add_child(update_button)
 
+
 ## Recursive helper to safely dig down and find the first Button node
 func _find_first_button(node: Node) -> Button:
 	if node is Button:
@@ -83,12 +90,14 @@ func _find_first_button(node: Node) -> Button:
 			return result
 	return null
  
+
 ## Initialize the dialog box used for the popup and it's contents.
 func _init_dialog() -> void:
 	# Popup
 	dialog = ConfirmationDialog.new()
 	dialog.title = "Wisp Updates Available"
 	dialog.confirmed.connect(_on_dialog_confirmed)
+	dialog.canceled.connect(_on_dialog_cancelled)
 
 	# VBox
 	vbox = VBoxContainer.new()
@@ -110,11 +119,7 @@ func _on_wisp_button_pressed() -> void:
 		child.queue_free()
 	update_checkboxes.clear()
 	
-	# TODO: Make the button move visually during check.
-	# Disable the button visually while working
-	update_button.disabled = true
-	update_button.icon = in_progress_icon
-
+	_start_loading_animation()
 	wisp_thread = Thread.new()
 	wisp_thread.start(_run_wisp_check_background)
 
@@ -127,6 +132,21 @@ func _run_wisp_check_background() -> void:
 
 	# Hand the output back to the main thread.
 	call_deferred(&"_on_wisp_check_finished", exit_code, output)
+
+
+## Worker used to run the "wisp update" command on a separate thread.
+## The multithreading itself is engaged outside of this method. The method itself just does the work.
+func _run_wisp_update_background(repos_to_update: Array) -> void:
+	# Pass all repos to update.
+	var args = ["update"]
+	args.append_array(repos_to_update)
+	args.append("--yes") # Bypass confirmation
+
+	var output = []
+	var exit_code := OS.execute("wisp", args, output, true, false)
+
+	# Hand the exit code back to the main thread.
+	call_deferred(&"_on_wisp_update_finished", exit_code)
 
 
 ## Called by the worker to signal the "wisp check" command finished.
@@ -152,9 +172,7 @@ func _on_wisp_check_finished(exit_code: int, output: Array) -> void:
 		var label := Label.new()
 		label.text = "All tracked addons are up to date!"
 		vbox.add_child(label)
-		dialog.get_ok_button().disabled = true
 	else:
-		dialog.get_ok_button().disabled = false
 		for addon in outdated_addons:
 			var cb := CheckBox.new()
 
@@ -168,6 +186,15 @@ func _on_wisp_check_finished(exit_code: int, output: Array) -> void:
 	dialog.popup_centered(Vector2(350, 150))
 
 
+## Called by the worker to signal the "wisp update" command finished.
+func _on_wisp_update_finished(exit_code: int) -> void:
+	if exit_code == OK:
+		get_editor_interface().get_resource_filesystem().scan()
+		_stop_loading_animation()
+	else:
+		update_button.modulate = Color.RED
+
+
 func _on_dialog_confirmed() -> void:
 	update_button.disabled = false
 	update_button.icon = complete_icon
@@ -178,21 +205,40 @@ func _on_dialog_confirmed() -> void:
 			repos_to_update.append(repo)
 
 	if repos_to_update.is_empty():
+		_stop_loading_animation()
 		return # Do nothing when everything is deselected
 
-	print("Wisp is downloading updates...")
+	# If already pressed just skip
+	if wisp_thread and wisp_thread.is_alive(): return
 
-	# Pass all repos to update.
-	var args = ["update"]
-	args.append_array(repos_to_update)
-	args.append("--yes") # Bypass confirmation
+	# Clean up the old thread
+	if wisp_thread and wisp_thread.is_started():
+		wisp_thread.wait_to_finish()
 
-	var output = []
-	var exit_code := OS.execute("wisp", args, output, true, true)
+	wisp_thread = Thread.new()
+	wisp_thread.start(_run_wisp_update_background.bind(repos_to_update))
 
-	for line in output:
-		print(line)
+
+func _on_dialog_cancelled() -> void:
+	_stop_loading_animation()
+
+
+func _start_loading_animation() -> void:
+	_stop_loading_animation()
+
+	button_tween = update_button.create_tween().bind_node(update_button)
+
+	# Set looping and trans
+	button_tween.set_loops()
+	button_tween.set_trans(Tween.TRANS_SINE)
+
+	# Pulse
+	button_tween.tween_property(update_button, "modulate:a", 0.3, 0.6)
+	button_tween.tween_property(update_button, "modulate:a", 1.0, 0.6)
+
+
+func _stop_loading_animation() -> void:
+	if button_tween and button_tween.is_valid():
+		button_tween.kill()
 	
-	# Re scan folders.
-	if exit_code == 0:
-		get_editor_interface().get_resource_filesystem().scan()
+	update_button.modulate.a = 1.0

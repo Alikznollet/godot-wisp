@@ -17,10 +17,12 @@ config/icon="res://icon.svg"
 [autoload]
 
 PhantomCameraManager="*uid://duq6jhf6unyis"
+SteamLobby="*uid://is4p4a4cmx3f"
+SteamLobbyDataDB="*uid://ba30qldjcjch0"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/wisp_updater/plugin.cfg")
+enabled=PackedStringArray("res://addons/steam_lobby/plugin.cfg", "res://addons/wisp_updater/plugin.cfg")
 
 [physics]
 
