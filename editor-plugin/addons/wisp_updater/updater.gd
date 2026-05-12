@@ -16,15 +16,38 @@ var wisp_thread: Thread
 func _enter_tree() -> void:
 	# TODO: Check whether Wisp is installed before enabling the addon.
 
+	_init_button()
+	_init_dialog()
+
+func _exit_tree() -> void:
+	update_button.queue_free()
+	dialog.queue_free()
+
+
+## Initializes the button for Wisp
+func _init_button() -> void:
 	# Toolbar button
 	update_button = Button.new()
 	update_button.text = "Wisp Sync"
 	update_button.tooltip_text = "Check for addon updates"
 	update_button.pressed.connect(_on_wisp_button_pressed)
 
-	# Inject the button into the toolbar
-	add_control_to_container(EditorPlugin.CONTAINER_TOOLBAR, update_button)
+	# Use a dummy to get the right control
+	var dummy = Control.new()
+	add_control_to_container(EditorPlugin.CONTAINER_TOOLBAR, dummy)
+	var target_toolbar = dummy.get_parent()
+	dummy.queue_free()
 
+	# Loop over the children until we get to the EditorRunBar
+	for child in target_toolbar.get_children():
+		if child.name.contains("EditorRunBar"):
+			if child.get_child_count() > 0:
+				var child_box: HBoxContainer = child.get_child(0)
+				child_box.add_child(update_button)
+
+ 
+## Initialize the dialog box used for the popup and it's contents.
+func _init_dialog() -> void:
 	# Popup
 	dialog = ConfirmationDialog.new()
 	dialog.title = "Wisp Updates Available"
@@ -36,10 +59,6 @@ func _enter_tree() -> void:
 
 	get_editor_interface().get_base_control().add_child(dialog)
 
-func _exit_tree() -> void:
-	remove_control_from_container(EditorPlugin.CONTAINER_TOOLBAR, update_button)
-	update_button.queue_free()
-	dialog.queue_free()
 
 func _on_wisp_button_pressed() -> void:
 	# If already pressed just skip
@@ -61,6 +80,7 @@ func _on_wisp_button_pressed() -> void:
 	wisp_thread = Thread.new()
 	wisp_thread.start(_run_wisp_check_background)
 
+
 ## Worker used to run the "wisp check" command on a separate thread.
 ## The multithreading itself is engaged outside of this method. The method itself just does the work.
 func _run_wisp_check_background() -> void:
@@ -70,8 +90,8 @@ func _run_wisp_check_background() -> void:
 	# Hand the output back to the main thread.
 	call_deferred(&"_on_wisp_check_finished", exit_code, output)
 
-## Called by the worker to signal the "wisp check" command finished.
 
+## Called by the worker to signal the "wisp check" command finished.
 func _on_wisp_check_finished(exit_code: int, output: Array) -> void:
 	# Join the thread.
 	if wisp_thread.is_started():
@@ -111,6 +131,7 @@ func _on_wisp_check_finished(exit_code: int, output: Array) -> void:
 
 	# Show the popup in the middle of the screen
 	dialog.popup_centered(Vector2(350, 150))
+
 
 func _on_dialog_confirmed() -> void:
 	var repos_to_update: Array[String] = []
