@@ -10,6 +10,9 @@ var vbox: VBoxContainer # TODO: This is temp, should be cleaned up.
 
 var update_checkboxes: Dictionary = {}
 
+## This thread handles the execution of wisp commands so the main thread isn't blocked.
+var wisp_thread: Thread
+
 func _enter_tree() -> void:
 	# TODO: Check whether Wisp is installed before enabling the addon.
 
@@ -39,32 +42,52 @@ func _exit_tree() -> void:
 	dialog.queue_free()
 
 func _on_wisp_button_pressed() -> void:
+	# If already pressed just skip
+	if wisp_thread and wisp_thread.is_alive(): return
+
+	# Clean up the old thread
+	if wisp_thread and wisp_thread.is_started():
+		wisp_thread.wait_to_finish()
+
 	# Clear out old checkboxes if there are any.
 	for child in vbox.get_children():
 		child.queue_free()
 	update_checkboxes.clear()
 	
 	# TODO: Make the button move visually during check.
+	# Disable the button visually while working
+	update_button.disabled = true
 
+	wisp_thread = Thread.new()
+	wisp_thread.start(_run_wisp_check_background)
+
+## Worker used to run the "wisp check" command on a separate thread.
+## The multithreading itself is engaged outside of this method. The method itself just does the work.
+func _run_wisp_check_background() -> void:
 	var output = []
+	var exit_code: int = OS.execute("wisp", ["check", "--json"], output, true, false)
 
-	# TODO: Make this run multi-threaded.
+	# Hand the output back to the main thread.
+	call_deferred(&"_on_wisp_check_finished", exit_code, output)
 
-	# Check for updates.
-	var exit_code: int = OS.execute("wisp", ["check", "--json"], output, true, true)
+## Called by the worker to signal the "wisp check" command finished.
 
-	if exit_code != 0 or output.is_empty():
+func _on_wisp_check_finished(exit_code: int, output: Array) -> void:
+	# Join the thread.
+	if wisp_thread.is_started():
+		wisp_thread.wait_to_finish()
+
+	# Restore button
+	update_button.disabled = false
+
+	if exit_code != OK or output.is_empty():
 		printerr("Wisp failed to check for updates.")
 		return
-
+	
 	# Parse JSON
 	var json_string: String = "".join(output)
 	var json: JSON = JSON.new()
 	var error := json.parse(json_string)
-
-	if error != OK:
-		printerr("Failed to parse Wisp JSON. Check the terminal output.")
-		return
 
 	# Will always return at least an empty list.
 	var outdated_addons = json.data

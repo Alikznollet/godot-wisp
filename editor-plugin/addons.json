@@ -1,3 +1,9 @@
 {
-  "addons": {}
+  "addons": {
+    "steam_lobby": {
+      "repo": "alikznollet/godot-steam-lobby",
+      "type": "release",
+      "version": "0.1"
+    }
+  }
 }
