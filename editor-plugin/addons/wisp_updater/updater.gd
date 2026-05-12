@@ -4,6 +4,10 @@ extends EditorPlugin
 ## 
 ## Looks for updates when the button is pressed.
 
+var complete_icon: Texture2D = load("uid://gvon8mvqv1db")
+var in_progress_icon: Texture2D = load("uid://7tfmm0phd0n3")
+var failed_icon: Texture2D = load("uid://qgs7d6jrj6pa")
+
 var update_button: Button
 var dialog: ConfirmationDialog # TODO: This is temp, should be scene.
 var vbox: VBoxContainer # TODO: This is temp, should be cleaned up.
@@ -26,25 +30,58 @@ func _exit_tree() -> void:
 
 ## Initializes the button for Wisp
 func _init_button() -> void:
-	# Toolbar button
-	update_button = Button.new()
-	update_button.text = "Wisp Sync"
-	update_button.tooltip_text = "Check for addon updates"
-	update_button.pressed.connect(_on_wisp_button_pressed)
-
 	# Use a dummy to get the right control
 	var dummy = Control.new()
 	add_control_to_container(EditorPlugin.CONTAINER_TOOLBAR, dummy)
 	var target_toolbar = dummy.get_parent()
 	dummy.queue_free()
 
-	# Loop over the children until we get to the EditorRunBar
+	var native_button: Button
+
+	# Safely recursively hunt for the first native Button inside the RunBar
 	for child in target_toolbar.get_children():
 		if child.name.contains("EditorRunBar"):
+			# Go into the first VBOX
 			if child.get_child_count() > 0:
-				var child_box: HBoxContainer = child.get_child(0)
-				child_box.add_child(update_button)
+				child = child.get_child(0)
+				# Go into the second VBOX???
+				if child.get_child_count() > 1:
+					child = child.get_child(1)
+					native_button = _find_first_button(child)
+					break
 
+	if not native_button:
+		printerr("Wisp could not find a base editor button to clone!")
+		return
+
+	# Duplicate the button (without copying signals and such)
+	update_button = native_button.duplicate()
+	
+	# Scrub the button
+	update_button.icon = complete_icon
+	update_button.visible = true
+	update_button.text = ""
+	update_button.toggle_mode = false
+	update_button.tooltip_text = "Check for addon updates"
+	update_button.shortcut = null
+	update_button.expand_icon = true
+	update_button.custom_minimum_size = Vector2(28, 28)
+	update_button.focus_mode = Control.FOCUS_NONE
+	
+	update_button.pressed.connect(_on_wisp_button_pressed)
+
+	# Inject the button.
+	native_button.get_parent().add_child(update_button)
+
+## Recursive helper to safely dig down and find the first Button node
+func _find_first_button(node: Node) -> Button:
+	if node is Button:
+		return node
+	for child in node.get_children():
+		var result = _find_first_button(child)
+		if result:
+			return result
+	return null
  
 ## Initialize the dialog box used for the popup and it's contents.
 func _init_dialog() -> void:
@@ -76,6 +113,7 @@ func _on_wisp_button_pressed() -> void:
 	# TODO: Make the button move visually during check.
 	# Disable the button visually while working
 	update_button.disabled = true
+	update_button.icon = in_progress_icon
 
 	wisp_thread = Thread.new()
 	wisp_thread.start(_run_wisp_check_background)
@@ -96,9 +134,6 @@ func _on_wisp_check_finished(exit_code: int, output: Array) -> void:
 	# Join the thread.
 	if wisp_thread.is_started():
 		wisp_thread.wait_to_finish()
-
-	# Restore button
-	update_button.disabled = false
 
 	if exit_code != OK or output.is_empty():
 		printerr("Wisp failed to check for updates.")
@@ -134,6 +169,9 @@ func _on_wisp_check_finished(exit_code: int, output: Array) -> void:
 
 
 func _on_dialog_confirmed() -> void:
+	update_button.disabled = false
+	update_button.icon = complete_icon
+
 	var repos_to_update: Array[String] = []
 	for repo in update_checkboxes:
 		if update_checkboxes[repo].button_pressed:
