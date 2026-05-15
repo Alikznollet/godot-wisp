@@ -4,18 +4,22 @@ extends EditorPlugin
 ## 
 ## Looks for updates when the button is pressed.
 
+# Assets
 var icon: Texture2D = load("uid://bye648xq1hcd6")
 
+# Nodes for the Update Button in the toolbar.
 var update_button: Button
 var button_tween: Tween
 
+# Popup nodes.
 var dialog: ConfirmationDialog # TODO: This is temp, should be scene.
 var vbox: VBoxContainer # TODO: This is temp, should be cleaned up.
 
+# Keeps track of the checkboxes for updates.
 var update_checkboxes: Dictionary = {}
 
-## This thread handles the execution of wisp commands so the main thread isn't blocked.
-var wisp_thread: Thread
+# The CLI instance we'll be interacting with.
+var cli: CLI = CLI.new()
 
 func _enter_tree() -> void:
 	# TODO: Check whether Wisp is installed before enabling the addon.
@@ -23,13 +27,11 @@ func _enter_tree() -> void:
 	_init_button()
 	_init_dialog()
 
+
 func _exit_tree() -> void:
 	update_button.queue_free()
 	dialog.queue_free()
-
-	# Make sure to clean up the thread.
-	if wisp_thread and wisp_thread.is_started():
-		wisp_thread.wait_to_finish()
+	cli.join()
 
 
 ## Initializes the button for Wisp
@@ -71,7 +73,7 @@ func _init_button() -> void:
 	update_button.expand_icon = true
 	update_button.custom_minimum_size = Vector2(28, 28)
 	update_button.focus_mode = Control.FOCUS_NONE
-	update_button.modulate.a = 0.8
+	update_button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	
 	update_button.pressed.connect(_on_wisp_button_pressed)
 
@@ -105,57 +107,31 @@ func _init_dialog() -> void:
 	get_editor_interface().get_base_control().add_child(dialog)
 
 
+## Called when the wisp button is pressed in the top right.
+## Will start the loading animation and the check command.
 func _on_wisp_button_pressed() -> void:
-	# If already pressed just skip
-	if wisp_thread and wisp_thread.is_alive(): return
-
-	# Clean up the old thread
-	if wisp_thread and wisp_thread.is_started():
-		wisp_thread.wait_to_finish()
-
-	# Clear out old checkboxes if there are any.
-	for child in vbox.get_children():
-		child.queue_free()
-	update_checkboxes.clear()
-	
 	_start_loading_animation()
-	wisp_thread = Thread.new()
-	wisp_thread.start(_run_wisp_check_background)
+	var free := cli.wisp_check()
+	if !free: # Means the thread was already working.
+		return
 
+	var result: Array = await cli.command_finished
 
-## Worker used to run the "wisp check" command on a separate thread.
-## The multithreading itself is engaged outside of this method. The method itself just does the work.
-func _run_wisp_check_background() -> void:
-	var output = []
-	var exit_code: int = OS.execute("wisp", ["check", "--json"], output, true, false)
+	var exit_code: int = result[0]
+	var output: Array = result[1]
 
-	# Hand the output back to the main thread.
-	call_deferred(&"_on_wisp_check_finished", exit_code, output)
-
-
-## Worker used to run the "wisp update" command on a separate thread.
-## The multithreading itself is engaged outside of this method. The method itself just does the work.
-func _run_wisp_update_background(repos_to_update: Array) -> void:
-	# Pass all repos to update.
-	var args = ["update"]
-	args.append_array(repos_to_update)
-	args.append("--yes") # Bypass confirmation
-
-	var output = []
-	var exit_code := OS.execute("wisp", args, output, true, false)
-
-	# Hand the exit code back to the main thread.
-	call_deferred(&"_on_wisp_update_finished", exit_code)
+	# Proceed to processing
+	_on_wisp_check_finished(exit_code, output)
 
 
 ## Called by the worker to signal the "wisp check" command finished.
 func _on_wisp_check_finished(exit_code: int, output: Array) -> void:
-	# Join the thread.
-	if wisp_thread.is_started():
-		wisp_thread.wait_to_finish()
+	# Join the thread
+	cli.join()
 
 	if exit_code != OK or output.is_empty():
 		printerr("Wisp failed to check for updates.")
+		_stop_loading_animation()
 		return
 	
 	# Parse JSON
@@ -165,6 +141,11 @@ func _on_wisp_check_finished(exit_code: int, output: Array) -> void:
 
 	# Will always return at least an empty list.
 	var outdated_addons = json.data
+
+	# Clear the checkboxes
+	for child in vbox.get_children():
+		child.queue_free()
+	update_checkboxes.clear()
 
 	# Build UI based on JSON.
 	if outdated_addons.is_empty():
@@ -185,18 +166,14 @@ func _on_wisp_check_finished(exit_code: int, output: Array) -> void:
 	dialog.popup_centered(Vector2(350, 150))
 
 
-## Called by the worker to signal the "wisp update" command finished.
-func _on_wisp_update_finished(exit_code: int) -> void:
-	if exit_code == OK:
-		get_editor_interface().get_resource_filesystem().scan()
-		_stop_loading_animation()
-	else:
-		update_button.modulate = Color.RED
+## Called when the CANCEL button is pressed in the Dialogue box.
+func _on_dialog_cancelled() -> void:
+	_stop_loading_animation()
 
 
+## Called when the Dialogue CONFIRM button is pressed.
+## Will perform the wisp update command with all of the checked addons.
 func _on_dialog_confirmed() -> void:
-	update_button.disabled = false
-
 	var repos_to_update: Array[String] = []
 	for repo in update_checkboxes:
 		if update_checkboxes[repo].button_pressed:
@@ -206,25 +183,34 @@ func _on_dialog_confirmed() -> void:
 		_stop_loading_animation()
 		return # Do nothing when everything is deselected
 
-	# If already pressed just skip
-	if wisp_thread and wisp_thread.is_alive(): return
+	# Run the update command
+	var free := cli.wisp_update(repos_to_update)
+	if !free: # Means the thread was already occupied.
+		return
 
-	# Clean up the old thread
-	if wisp_thread and wisp_thread.is_started():
-		wisp_thread.wait_to_finish()
+	var result: Array = await cli.command_finished
+	
+	var exit_code: int = result[0]
+	var output: Array = result[1]
 
-	wisp_thread = Thread.new()
-	wisp_thread.start(_run_wisp_update_background.bind(repos_to_update))
+	_on_wisp_update_finished(exit_code, output)
 
 
-func _on_dialog_cancelled() -> void:
+## Called by the worker to signal the "wisp update" command finished.
+func _on_wisp_update_finished(exit_code: int, output: Array) -> void:
 	_stop_loading_animation()
+	if exit_code == OK:
+		get_editor_interface().get_resource_filesystem().scan()
+	else:
+		printerr("Wisp failed to update some addons.")
 
 
+## Starts the loading animation of the button in the editor and disables it.
 func _start_loading_animation() -> void:
 	_stop_loading_animation()
 
-	# Set the pivot offset.
+	# Set the pivot offset and disable the button.
+	update_button.disabled = true
 	update_button.pivot_offset = update_button.size / 2.0
 
 	button_tween = update_button.create_tween().bind_node(update_button)
@@ -237,8 +223,10 @@ func _start_loading_animation() -> void:
 	button_tween.tween_property(update_button, "rotation", TAU, 1.0).as_relative()
 
 
+## Stops the loading animation of the button in the editor and enables it.
 func _stop_loading_animation() -> void:
 	if button_tween and button_tween.is_valid():
 		button_tween.kill()
 	
+	update_button.disabled = false
 	update_button.rotation = 0
