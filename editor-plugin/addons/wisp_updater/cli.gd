@@ -13,6 +13,29 @@ func join() -> void:
 		wisp_thread.wait_to_finish()
 
 
+## Will run "wisp -h" to check if wisp exists.
+func wisp_exists() -> bool:
+	if wisp_thread and wisp_thread.is_alive(): return false
+
+	if wisp_thread and wisp_thread.is_started():
+		wisp_thread.wait_to_finish()
+
+	wisp_thread = Thread.new()
+	wisp_thread.start(_wisp_check_worker)
+	return true
+
+
+## Worker used to run the "wisp -h" command on a separate thread.
+## The multithreading itself is engaged outside of this method. The method itself just does the work.
+func _wisp_exists_worker() -> void:
+	var output = []
+	var exit_code: int = OS.execute("wisp", ["-h"], output, true, false)
+
+	# Hand the output back to the main thread.
+	command_finished.emit.call_deferred(exit_code, output)
+
+
+## Runs the "wisp check" command and starts the Thread to do so.
 func wisp_check() -> bool:
 	# If already pressed just skip
 	if wisp_thread and wisp_thread.is_alive(): return false

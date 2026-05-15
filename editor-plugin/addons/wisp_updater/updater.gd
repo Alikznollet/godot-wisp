@@ -21,13 +21,25 @@ var update_checkboxes: Dictionary = {}
 # The CLI instance we'll be interacting with.
 var cli: CLI = CLI.new()
 
+## Ran when the plugin is enabled.
 func _enter_tree() -> void:
-	# TODO: Check whether Wisp is installed before enabling the addon.
-
 	_init_button()
 	_init_dialog()
 
+	# Check whether wisp is installed, and if not disable the button.
 
+	cli.wisp_exists() # This is on startup so no need to check for existence.
+	var result: Array = await cli.command_finished
+
+	# We only need the exit code.
+	var exit_code: int = result[0]
+	if exit_code != OK:
+		push_warning("Wisp was not found on your machine. You can install it and reload the addon to use the editor plugin.")
+		update_button.disabled = true
+		update_button.tooltip_text = "Wisp CLI not found! Please install Wisp and restart Godot to use this feature."
+
+
+## Ran when the plugin is disabled. Cleanup goes here.
 func _exit_tree() -> void:
 	update_button.queue_free()
 	dialog.queue_free()
@@ -68,7 +80,7 @@ func _init_button() -> void:
 	update_button.visible = true
 	update_button.text = ""
 	update_button.toggle_mode = false
-	update_button.tooltip_text = "Check for addon updates"
+	update_button.tooltip_text = "Check for addon updates."
 	update_button.shortcut = null
 	update_button.expand_icon = true
 	update_button.custom_minimum_size = Vector2(28, 28)
@@ -198,6 +210,9 @@ func _on_dialog_confirmed() -> void:
 
 ## Called by the worker to signal the "wisp update" command finished.
 func _on_wisp_update_finished(exit_code: int, output: Array) -> void:
+	# Join the thread
+	cli.join()
+
 	_stop_loading_animation()
 	if exit_code == OK:
 		get_editor_interface().get_resource_filesystem().scan()
