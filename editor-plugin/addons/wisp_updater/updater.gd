@@ -4,9 +4,7 @@ extends EditorPlugin
 ## 
 ## Looks for updates when the button is pressed.
 
-var complete_icon: Texture2D = load("uid://gvon8mvqv1db")
-var in_progress_icon: Texture2D = load("uid://7tfmm0phd0n3")
-var failed_icon: Texture2D = load("uid://qgs7d6jrj6pa")
+var icon: Texture2D = load("uid://bye648xq1hcd6")
 
 var update_button: Button
 var button_tween: Tween
@@ -64,7 +62,7 @@ func _init_button() -> void:
 	update_button = native_button.duplicate()
 	
 	# Scrub the button
-	update_button.icon = complete_icon
+	update_button.icon = icon
 	update_button.visible = true
 	update_button.text = ""
 	update_button.toggle_mode = false
@@ -73,6 +71,7 @@ func _init_button() -> void:
 	update_button.expand_icon = true
 	update_button.custom_minimum_size = Vector2(28, 28)
 	update_button.focus_mode = Control.FOCUS_NONE
+	update_button.modulate.a = 0.8
 	
 	update_button.pressed.connect(_on_wisp_button_pressed)
 
@@ -197,7 +196,6 @@ func _on_wisp_update_finished(exit_code: int) -> void:
 
 func _on_dialog_confirmed() -> void:
 	update_button.disabled = false
-	update_button.icon = complete_icon
 
 	var repos_to_update: Array[String] = []
 	for repo in update_checkboxes:
@@ -226,19 +224,21 @@ func _on_dialog_cancelled() -> void:
 func _start_loading_animation() -> void:
 	_stop_loading_animation()
 
+	# Set the pivot offset.
+	update_button.pivot_offset = update_button.size / 2.0
+
 	button_tween = update_button.create_tween().bind_node(update_button)
 
 	# Set looping and trans
 	button_tween.set_loops()
 	button_tween.set_trans(Tween.TRANS_SINE)
 
-	# Pulse
-	button_tween.tween_property(update_button, "modulate:a", 0.3, 0.6)
-	button_tween.tween_property(update_button, "modulate:a", 1.0, 0.6)
+	# Rotation
+	button_tween.tween_property(update_button, "rotation", TAU, 1.0).as_relative()
 
 
 func _stop_loading_animation() -> void:
 	if button_tween and button_tween.is_valid():
 		button_tween.kill()
 	
-	update_button.modulate.a = 1.0
+	update_button.rotation = 0
